@@ -8,40 +8,83 @@
 #include <netdb.h>
 #include <pthread.h>
 
-#define SERVER_PORT 3030
-#define MAX_PENDING_CONNECTIONS 10
-#define MAX_SOCKET_BUF 1024
 #define MAX_BUF 1024
-
 #define IRC_HOST "localhost"
 #define IRC_PORT "6667"
 
-int irc_connect();
-int irc_send(char *msg, int fd);
-void irc_login(int fd_irc, char *nick, char *ch_name);
+struct irc_desc {
+	int fd;
+	char *ch_name;
+};
+
+static int irc_connect();
+static int irc_send(char *msg, int fd);
+static void irc_login(int fd_irc, char *nick, char *ch_name);
+static void *irc_listen(void *arg);
+static void *stdin_listen(void *arg);
+static int irc_send_priv(char *msg, int fd);
 
 int main() {
 
 	int fd_irc;
-	int num_read;
-	char buf[MAX_BUF], message[MAX_BUF + 1];
+	void *res;
+	pthread_t t_irc, t_stdin;
+
+	struct irc_desc *desc = malloc(sizeof(struct irc_desc));
+
+	desc->ch_name = "#botnet-ch";
 
 	if ((fd_irc = irc_connect()) == -1) {
 		perror("cannot connect to IRC");
 		exit(EXIT_FAILURE);
 	}
 
+	desc->fd = fd_irc;
+
 	irc_login(fd_irc, "my-bot", "#botnet-ch");
+
+	pthread_create(&t_irc, NULL, irc_listen, &fd_irc);
+	puts("thread irc_listen created");
+
+	pthread_create(&t_stdin, NULL, stdin_listen, desc);
+	puts("thread stdin_listen created");
+
+	pthread_join(t_irc, &res);
+	pthread_join(t_stdin, &res);
+
+}
+
+static void *stdin_listen(void *arg) {
+
+	struct irc_desc *desc = (struct irc_desc*)arg;
+	int fd_irc = desc->fd;
+	int num_read;
+	char buf[MAX_BUF];
+
+	char *msg = malloc(MAX_BUF + strlen(desc->ch_name) + 3);
+
+	while((num_read = read(STDIN_FILENO, buf, sizeof(buf) - 1)) > 0) {
+		snprintf(msg, strlen(desc->ch_name) + num_read + 3, "%s :%s", desc->ch_name, buf);
+		irc_send_priv(msg, fd_irc);
+	}
+
+	free(msg);
+
+}
+
+static void *irc_listen(void *arg) {
+
+	int fd_irc  = *((int*) arg);
+	int num_read;
+	char buf[MAX_BUF], message[MAX_BUF + 1];
 
 	while((num_read = read(fd_irc, buf, sizeof(buf))) > 0) {
 	       snprintf(message, num_read, "%s", buf);
 	       puts(message);
 	}
-
-
 }
 
-void irc_login(int fd_irc, char *nick, char *ch_name) {
+static void irc_login(int fd_irc, char *nick, char *ch_name) {
 	int ret;
 
 	char *HELLO = "HELLO";
@@ -56,6 +99,7 @@ void irc_login(int fd_irc, char *nick, char *ch_name) {
 		perror("sending hello");
 		exit(EXIT_FAILURE);
 	}
+
 	if ((ret = irc_send(NICK, fd_irc)) == -1) {
 		perror("sending nick");
 		exit(EXIT_FAILURE);
@@ -74,7 +118,22 @@ void irc_login(int fd_irc, char *nick, char *ch_name) {
 
 }
 
-int irc_send(char *msg, int fd) {
+static int irc_send_priv(char *msg, int fd) {
+
+	char *PRIVMSG = malloc(strlen(msg) + 9);
+
+	snprintf(PRIVMSG, strlen(msg) + 9, "PRIVMSG %s", msg);
+
+	if (write(fd, PRIVMSG, strlen(PRIVMSG)) == -1) {
+		perror("write privmsg irc");
+		return -1;
+	}
+
+	free(PRIVMSG);
+	return 0;
+}
+
+static int irc_send(char *msg, int fd) {
 
 	if (write(fd, msg, strlen(msg)) == -1) {
 		perror("write irc");
@@ -89,7 +148,7 @@ int irc_send(char *msg, int fd) {
 	return 0;
 }
 
-int irc_connect() {
+static int irc_connect() {
 
 	int fd_irc;
       	struct addrinfo hints, *result, *rp;
