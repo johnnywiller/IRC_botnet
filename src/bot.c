@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <pthread.h>
 
 #define SERVER_PORT 3030
 #define MAX_PENDING_CONNECTIONS 10
@@ -67,6 +68,9 @@ void irc_login(int fd_irc, char *nick, char *ch_name) {
 		perror("sending join");
 		exit(EXIT_FAILURE);
 	}
+
+	free(NICK);
+	free(JOIN);
 
 }
 
