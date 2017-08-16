@@ -17,67 +17,56 @@
 
 int irc_connect();
 int irc_send(char *msg, int fd);
+void irc_login(int fd_irc, char *nick, char *ch_name);
 
 int main() {
-
-	/*
-	int fd_socket, fd_socket_client;
-	struct sockaddr_in addr_server, addr_client;
-
-	if ((fd_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		perror("opening socket");
-		exit(EXIT_FAILURE);
-	}
-
-	memset(&addr_server, 0, sizeof(struct sockaddr_in));
-
-	addr_server.sin_family = AF_INET;
-	addr_server.sin_addr.s_addr = INADDR_ANY;
-	addr_server.sin_port = htons(SERVER_PORT);
-
-	if (bind(fd_socket, (struct sockaddr*) &addr_server, sizeof(addr_server)) == -1) {
-		perror("binding socket");
-		exit(EXIT_FAILURE);
-	}
-
-	if (listen(fd_socket, MAX_PENDING_CONNECTIONS) == -1) {
-		perror("listen socket");
-		exit(EXIT_FAILURE);
-	}
-
-	socklen_t addr_len = sizeof(struct sockaddr_in);
-	if ((fd_socket_client = accept(fd_socket,
-		(struct sockaddr*) &addr_client, &addr_len)) == -1) {
-
-		perror("accepting connection");
-		exit(EXIT_FAILURE);
-	}
-
-	int num_read, msg_len;
-	msg_len = strlen("cliente mandou: ");
-	char buf[MAX_SOCKET_BUF], str_buf[MAX_SOCKET_BUF + msg_len + 1];
-	while((num_read = recv(fd_socket_client, buf, MAX_SOCKET_BUF, 0)) > 0) {
-		snprintf(str_buf, num_read + msg_len + 1, "Cliente mandou: %s", buf);
-		puts(str_buf);
-	}
-	*/
 
 	int fd_irc;
 	int num_read;
 	char buf[MAX_BUF], message[MAX_BUF + 1];
 
-	fd_irc = irc_connect();
+	if ((fd_irc = irc_connect()) == -1) {
+		perror("cannot connect to IRC");
+		exit(EXIT_FAILURE);
+	}
 
-	irc_send("HELLO", fd_irc);
-	irc_send("NICK bsh33p", fd_irc);
-	irc_send("USER johnny 0 * :willer", fd_irc);
-	irc_send("JOIN :#botnet-ch", fd_irc);
+	irc_login(fd_irc, "my-bot", "#botnet-ch");
 
 	while((num_read = read(fd_irc, buf, sizeof(buf))) > 0) {
 	       snprintf(message, num_read, "%s", buf);
 	       puts(message);
 	}
 
+
+}
+
+void irc_login(int fd_irc, char *nick, char *ch_name) {
+	int ret;
+
+	char *HELLO = "HELLO";
+	char *NICK = malloc(strlen(nick) + 6);
+	char *USER = "USER bot 0 * :bot";
+	char *JOIN = malloc(strlen(ch_name) + 6);
+
+	snprintf(NICK, strlen(nick) + 6, "NICK %s", nick);
+	snprintf(JOIN, strlen(ch_name) + 6, "JOIN %s", ch_name);
+
+	if ((ret = irc_send(HELLO, fd_irc)) == -1) {
+		perror("sending hello");
+		exit(EXIT_FAILURE);
+	}
+	if ((ret = irc_send(NICK, fd_irc)) == -1) {
+		perror("sending nick");
+		exit(EXIT_FAILURE);
+	}
+	if ((ret = irc_send(USER, fd_irc)) == -1) {
+		perror("sending user");
+		exit(EXIT_FAILURE);
+	}
+	if ((ret = irc_send(JOIN, fd_irc)) == -1) {
+		perror("sending join");
+		exit(EXIT_FAILURE);
+	}
 
 }
 
