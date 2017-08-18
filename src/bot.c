@@ -11,37 +11,76 @@
 #define MAX_BUF 1024
 #define IRC_HOST "localhost"
 #define IRC_PORT "6667"
+#define IRC_CHANNEL "#mychannel"
+#define IRC_NICK "mynick"
 
 struct irc_desc {
 	int fd;
 	char *ch_name;
+	char *nick;
+	char *hostname;
+	char *port;
 };
 
 static int irc_connect();
 static int irc_send(char *msg, int fd);
-static void irc_login(int fd_irc, char *nick, char *ch_name);
+static void irc_login(struct irc_desc *desc);
 static void *irc_listen(void *arg);
 static void *stdin_listen(void *arg);
 static int irc_send_priv(char *msg, int fd);
 
-int main() {
+int main(int argc, char* argv[]) {
 
 	int fd_irc;
 	void *res;
+	char *ch_name = IRC_CHANNEL;
+	char *nick = IRC_NICK;
+	char *hostname = IRC_HOST;
+	char *port = IRC_PORT;
+	int opt;
 	pthread_t t_irc, t_stdin;
 
 	struct irc_desc *desc = malloc(sizeof(struct irc_desc));
 
-	desc->ch_name = "#botnet-ch";
+
+	while((opt = getopt(argc, argv, "h:p:n:c:")) != -1) {
+		if (opt == '?')	{
+			perror("invalid argument");
+			exit(EXIT_FAILURE);
+		}
+
+		switch(opt) {
+		case 'h':
+			hostname = malloc(strlen(optarg) + 1);
+			strcpy(hostname, optarg);
+			break;
+		case 'p':
+			port = malloc(strlen(optarg));
+			strcpy(port, optarg);
+			break;
+		case 'n':
+			nick = malloc(strlen(optarg));
+			strcpy(nick, optarg);
+			break;
+		case 'c':
+			ch_name = malloc(strlen(optarg));
+			strcpy(ch_name, optarg);
+			break;
+		}
+	}
 
 	if ((fd_irc = irc_connect()) == -1) {
 		perror("cannot connect to IRC");
 		exit(EXIT_FAILURE);
 	}
 
+	desc->ch_name = ch_name;
+	desc->nick = nick;
+	desc->hostname = hostname;
+	desc->port = port;
 	desc->fd = fd_irc;
 
-	irc_login(fd_irc, "my-bot", "#botnet-ch");
+	irc_login(desc);
 
 	pthread_create(&t_irc, NULL, irc_listen, &fd_irc);
 	puts("thread irc_listen created");
@@ -84,31 +123,30 @@ static void *irc_listen(void *arg) {
 	}
 }
 
-static void irc_login(int fd_irc, char *nick, char *ch_name) {
+static void irc_login(struct irc_desc *desc) {
 	int ret;
 
 	char *HELLO = "HELLO";
-	char *NICK = malloc(strlen(nick) + 6);
+	char *NICK = malloc(strlen(desc->nick) + 6);
 	char *USER = "USER bot 0 * :bot";
-	char *JOIN = malloc(strlen(ch_name) + 6);
+	char *JOIN = malloc(strlen(desc->ch_name) + 6);
 
-	snprintf(NICK, strlen(nick) + 6, "NICK %s", nick);
-	snprintf(JOIN, strlen(ch_name) + 6, "JOIN %s", ch_name);
+	snprintf(NICK, strlen(desc->nick) + 6, "NICK %s", desc->nick);
+	snprintf(JOIN, strlen(desc->ch_name) + 6, "JOIN %s", desc->ch_name);
 
-	if ((ret = irc_send(HELLO, fd_irc)) == -1) {
+	if ((ret = irc_send(HELLO, desc->fd)) == -1) {
 		perror("sending hello");
 		exit(EXIT_FAILURE);
 	}
-
-	if ((ret = irc_send(NICK, fd_irc)) == -1) {
+	if ((ret = irc_send(NICK, desc->fd)) == -1) {
 		perror("sending nick");
 		exit(EXIT_FAILURE);
 	}
-	if ((ret = irc_send(USER, fd_irc)) == -1) {
+	if ((ret = irc_send(USER, desc->fd)) == -1) {
 		perror("sending user");
 		exit(EXIT_FAILURE);
 	}
-	if ((ret = irc_send(JOIN, fd_irc)) == -1) {
+	if ((ret = irc_send(JOIN, desc->fd)) == -1) {
 		perror("sending join");
 		exit(EXIT_FAILURE);
 	}
@@ -192,12 +230,3 @@ static int irc_connect() {
 
 	return fd_irc;
 }
-
-
-
-
-
-
-
-
-
