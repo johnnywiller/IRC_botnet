@@ -144,7 +144,11 @@ static void *irc_listen(void *arg) {
 					}
 				}
 			}
+		} else if ((str_ret = strstr(buf, "PING")) != NULL) {
+			snprintf(message, 5, "PONG");
+			irc_send(message, desc->fd);
 		}
+		puts(buf);
 	}
 }
 
