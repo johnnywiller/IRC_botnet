@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
 	desc->ch_name = ch_name;
 	desc->nick = nick;
 	desc->hostname = hostname;
-	desc->port = port;
+	desc->port = htons(port);
 
 	if ((fd_irc = irc_connect(desc)) == -1) {
 		perror("cannot connect to IRC");
@@ -110,6 +110,33 @@ static void *stdin_listen(void *arg) {
 
 	free(msg);
 
+}
+
+
+static telnet_connect(struct telnet_desc desc) {
+
+	int fd_telnet;
+
+	if ((fd_telnet = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		perror("telnet socket");
+	}
+
+	// we've successfuly create a socket, now we need to try to connect
+	if (connect(fd_telnet, desc->addr, ) == -1) {
+		perror("telnet connect");
+		continue; // again no problem if not works
+	}
+
+	// we must use this convenient method to free all results list
+	// (since is a linked list cannot be made with a simple free() )
+	freeaddrinfo(result);
+
+	// arrived at last result without successful connection
+	if (rp == NULL) {
+		close(fd_irc);
+		perror("cannot connect to telnet");
+		return -1;
+	}
 }
 
 static void *irc_listen(void *arg) {
@@ -215,7 +242,7 @@ static int irc_send(char *msg, int fd) {
 	return 0;
 }
 
-static int irc_connect(struct irc_desc *desc) {
+static int irc_connect(struct irc_desc *desc){
 
 	int fd_irc;
       	// structures used to get host info, like IP e port
