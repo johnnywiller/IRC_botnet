@@ -22,12 +22,20 @@ struct irc_desc {
 	char *port;
 };
 
+struct telnet_desc {
+	int fd;
+	char *ip_addr;
+	char *port;
+};
+
+
 static int irc_connect(struct irc_desc *desc);
 static int irc_send(char *msg, int fd);
 static void irc_login(struct irc_desc *desc);
 static void *irc_listen(void *arg);
 static void *stdin_listen(void *arg);
 static int irc_send_priv(char *msg, int fd);
+static void telnet_connect(char *ip_addr);
 
 int main(int argc, char* argv[]) {
 
@@ -113,30 +121,27 @@ static void *stdin_listen(void *arg) {
 }
 
 
-static telnet_connect(struct telnet_desc desc) {
+static void telnet_connect(struct telnet_desc desc) {
 
-	int fd_telnet;
-
-	if ((fd_telnet = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+	if ((desc->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		perror("telnet socket");
 	}
 
 	// we've successfuly create a socket, now we need to try to connect
-	if (connect(fd_telnet, desc->addr, ) == -1) {
+	if (connect(desc->fd, desc->addr, sizeof(desc->addr)) == -1) {
 		perror("telnet connect");
-		continue; // again no problem if not works
+	}
+}
+
+static void telnet_login(struct telnet_desc desc) {
+
+	int num_read;
+	char *buf;
+
+	while((num_read = read(desc->fd, buf, 1024)) > 0) {
+		write(STDOUT_FILENO, buf, num_read); 
 	}
 
-	// we must use this convenient method to free all results list
-	// (since is a linked list cannot be made with a simple free() )
-	freeaddrinfo(result);
-
-	// arrived at last result without successful connection
-	if (rp == NULL) {
-		close(fd_irc);
-		perror("cannot connect to telnet");
-		return -1;
-	}
 }
 
 static void *irc_listen(void *arg) {
