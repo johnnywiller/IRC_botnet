@@ -19,7 +19,7 @@ struct irc_desc {
 	char *ch_name;
 	char *nick;
 	char *hostname;
-	char *port;
+	uint16_t port;
 };
 
 struct telnet_desc {
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
 	desc->ch_name = ch_name;
 	desc->nick = nick;
 	desc->hostname = hostname;
-	desc->port = htons(port);
+	desc->port = htons(atoi(port));
 
 	if ((fd_irc = irc_connect(desc)) == -1) {
 		perror("cannot connect to IRC");
@@ -117,31 +117,8 @@ static void *stdin_listen(void *arg) {
 	}
 
 	free(msg);
-
-}
-
-
-static void telnet_connect(struct telnet_desc desc) {
-
-	if ((desc->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		perror("telnet socket");
-	}
-
-	// we've successfuly create a socket, now we need to try to connect
-	if (connect(desc->fd, desc->addr, sizeof(desc->addr)) == -1) {
-		perror("telnet connect");
-	}
-}
-
-static void telnet_login(struct telnet_desc desc) {
-
-	int num_read;
-	char *buf;
-
-	while((num_read = read(desc->fd, buf, 1024)) > 0) {
-		write(STDOUT_FILENO, buf, num_read); 
-	}
-
+	
+	return (void *) NULL;
 }
 
 static void *irc_listen(void *arg) {
@@ -182,6 +159,8 @@ static void *irc_listen(void *arg) {
 		}
 		puts(buf);
 	}
+
+	return (void *) NULL;
 }
 
 static void irc_login(struct irc_desc *desc) {
