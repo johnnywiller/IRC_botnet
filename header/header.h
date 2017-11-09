@@ -14,12 +14,19 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <ifaddrs.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <termios.h>
 #include <fcntl.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/ether.h>
+#include <net/if.h>
+#include <netinet/udp.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
 #include "irc.h"
 #include "config.h"
 #include "scanner.h"
+#include "attack.h"
 
 #endif
