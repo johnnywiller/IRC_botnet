@@ -2,7 +2,7 @@ CC = gcc
 WARNINGS = -Wall -Wextra
 BIN = ./bin/
 SRC = ./src/
-FLAGS = -static -static-libgcc  
+FLAGS = -static -static-libgcc
 DEBUG = -g
 default: bot
 

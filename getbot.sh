@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVER_IP="http://192.168.0.140"
+SERVER_IP="http://172.17.0.3"
 
 
 rm -rf /tmp/bot

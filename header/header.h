@@ -23,6 +23,8 @@
 #include <netinet/udp.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <math.h>
+#include <errno.h>
 
 #include "irc.h"
 #include "config.h"

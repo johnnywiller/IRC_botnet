@@ -1,6 +1,8 @@
 #ifndef IRC_H
 #define IRC_H
 
+#define DEFAULT_NP_CHG 100
+
 typedef struct {
 	int fd_irc;
 	char *ch;

