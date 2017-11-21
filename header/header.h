@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <math.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "irc.h"
 #include "config.h"

