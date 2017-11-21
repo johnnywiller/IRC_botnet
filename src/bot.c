@@ -14,10 +14,14 @@ int main(int argc, char *argv[]) {
 	read(open("/dev/urandom", O_RDONLY), &seed, sizeof(seed));
 	srand(seed | time(NULL));
 
-	irc_info *info = malloc(sizeof(irc_info));
+	irc_info *info = calloc(1, sizeof(irc_info));
+	info->ch = IRC_CHANNEL;
+        info->port = IRC_PORT;
 
-	if (irc_connect(info)) {
-		if (irc_login(info) == EXIT_FAILURE) {
+	if (irc_connect(info) == EXIT_SUCCESS) {
+		printf("connected\n");
+		if (irc_login(info) == EXIT_SUCCESS) {
+			printf("logged\n");
 			if (irc_listen(info) == EXIT_FAILURE) {
 				perror("irc listen");
 				unlink_pid_file();

