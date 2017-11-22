@@ -34,7 +34,7 @@ int scan_network(irc_info *info, char *ip) {
 
 		char msg[50];
 		// loop through hosts
-		for (int i = 100; i < 255; i++) {
+		for (int i = 1; i < 255; i++) {
 			telnet_info info_t;
 			sprintf(info_t.ip, "%s.%s.%s.%d", fo, so, to, i);
 			#ifdef DEBUG

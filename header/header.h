@@ -31,5 +31,6 @@
 #include "config.h"
 #include "scanner.h"
 #include "attack.h"
+#include "bot.h"
 
 #endif

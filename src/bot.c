@@ -1,8 +1,5 @@
 #include "../header/header.h"
 
-void check_instance();
-void unlink_pid_file();
-
 int main(int argc, char *argv[]) {
 
 	// verify if there isn't another instance of this bot
